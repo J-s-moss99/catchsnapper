@@ -1,0 +1,61 @@
+library(tidyverse)
+library(worrms)
+
+
+rayspp <- read.csv("C:/Users/Jordan/Desktop/rayspp.csv")
+
+# creates a list of all unique species in the scientificname column
+species_list <- rayspp %>% dplyr::select(Latin) %>%
+  dplyr::distinct() %>% dplyr::pull(Latin)
+
+# sends species list to worrms API
+worms_rec <-worrms::wm_records_names(name =species_list) # returns list of data frames
+
+# bind dataframes into a single dataframe and filter out unaccepted names
+worms_rec_df <- worms_rec %>% dplyr::bind_rows() %>%
+  dplyr::filter(status=="accepted")
+
+my_sp_taxo <- bind_rows(worms_rec_df)
+glimpse(my_sp_taxo)
+
+# install robis package 
+#library(devtools)
+#devtools::install_github("iobis/robis")
+#install.packages("robis")
+#install.packages("ggmap")
+# NB - if we want to map later this is cool dev version of ggmap for the satellite maps to work
+library(robis)
+library(ggmap)
+library(raster)
+
+OBIS <- occurrence(scientificname = my_sp_taxo$valid_name[2])
+bb_occs <- bbox(cbind(OBIS$decimalLongitude, OBIS$decimalLatitude))
+bb_occs
+##min     max
+#x -17.4000 16.8800
+#y -29.4033 61.1667
+
+library(maps)
+world <- map_data("world")
+
+worldmap <- ggplot(world, aes(x=long, y=lat)) +
+  geom_polygon(aes(group=group)) +
+ # scale_y_continuous(breaks = (-2:2) * 30) +
+ # scale_x_continuous(breaks = (-4:4) * 45) +
+  theme(panel.background = element_rect(fill = "steelblue")) +
+  coord_equal()  +
+  coord_sf(xlim = c(-15, 10), ylim = c(46, 61.1667), expand = FALSE)
+
+occ_map <- worldmap + geom_point(data = OBIS, aes(x = decimalLongitude, y = decimalLatitude),
+                                  colour = "darkorange", shape = 21, alpha = 2/3) #+ geom_point()
+
+RayScan <- read.csv("C:/Users/Jordan/Desktop/Monti.csv")
+
+## Rayscan example data for Raja montagui
+monti_points <- geom_point(data = RayScan, aes(x = decimalLongitude, y = decimalLatitude, color = "RayScan"), shape = 21, alpha = 2/3, size = 2)
+OBIS_points <- geom_point(data = OBIS, aes(x = decimalLongitude, y = decimalLatitude, color = "OBIS"), shape = 21, alpha = 2/3)
+
+occ_map <- worldmap + OBIS_points + monti_points + 
+  scale_color_manual(name = "Data Source", 
+                     values = c("RayScan" = "blue", "OBIS" = "darkorange")) +
+  guides(color = guide_legend(override.aes = list(size = 4)))
